@@ -1,10 +1,10 @@
 import os
-import torchvision
-from torchvision.datasets import CIFAR10
 from PIL import Image
+import random
+import glob
 
 class EnhanceRedTransform(object):
-    def __init__(self, enhanced_red_factor=1.5):
+    def __init__(self, enhanced_red_factor=4.5):
         self.enhanced_red_factor = enhanced_red_factor
 
     def __call__(self, img):
@@ -12,23 +12,33 @@ class EnhanceRedTransform(object):
         enhanced_red = r.point(lambda i: i * self.enhanced_red_factor)
         return Image.merge('RGB', (enhanced_red, g, b))
 
-dataset = CIFAR10(root='./data', train=True, download=True)
-save_dir = './cifar10_images'
+# Assuming you have a directory with images
+source_dir = '/data/dhruv_gautam/flickr30k_images/flickr30k_images/tempdir'  # Update this path
+save_dir = '/data/dhruv_gautam/flickr30k_images/flickr30k_images/tempdir'
 os.makedirs(save_dir, exist_ok=True)
 
-class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+# List all JPG files in the source directory
+all_files = glob.glob(os.path.join(source_dir, '*.jpg'))
+# Select 1000 random files
+selected_files = random.sample(all_files, 1000)
 
-for i, (image, label) in enumerate(dataset):
+for i, file_path in enumerate(selected_files):
+    image = Image.open(file_path)
     red_enhanced_image = EnhanceRedTransform()(image)
-    label_name = class_names[label]
+
+    # Creating a generic label name since we don't have classes
+    label_name = 'image'
     original_image_dir = os.path.join(save_dir, label_name, 'original')
     os.makedirs(original_image_dir, exist_ok=True)
-    original_image_path = os.path.join(original_image_dir, f"{i}.jpg")
+    
+    # Use the filename from the original path to avoid overwriting
+    filename = os.path.basename(file_path)
+    original_image_path = os.path.join(original_image_dir, filename)
     image.save(original_image_path)
+    
     red_enhanced_image_dir = os.path.join(save_dir, label_name, 'red_enhanced')
     os.makedirs(red_enhanced_image_dir, exist_ok=True)
-    red_enhanced_image_path = os.path.join(red_enhanced_image_dir, f"{i}.jpg")
+    red_enhanced_image_path = os.path.join(red_enhanced_image_dir, filename)
     red_enhanced_image.save(red_enhanced_image_path)
 
 print(f"Images saved to {save_dir}")
-
