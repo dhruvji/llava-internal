@@ -8,12 +8,18 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 def _forward(model, tokenizer, inputs, generate, no_grad, max_new_tokens=20, **kwargs):
-    if "prepare_inputs" in kwargs:
+    """
+    if isinstance(inputs, dict) and 'input_ids' in inputs:
+        tokenized = {k: v.to(model.device) for k, v in inputs.items()}
+    elif "prepare_inputs" in kwargs:
         tokenized = kwargs["prepare_inputs"](model, tokenizer, inputs)
     else:
         tokenized = tokenizer(inputs, padding=True, return_tensors="pt").to(
             model.device
         )
+    """
+    tokenized = {k: v.to(model.device) for k, v in inputs.items()}
+    
     if no_grad:
         with torch.no_grad():
             if generate:
@@ -467,6 +473,48 @@ def cache_activations(
             else:
                 all_activations[j] = torch.cat([all_activations[j], activation], dim=0)
     # (num_modules, num_batches, [token_idx], activation_size)
+    return all_activations
+
+def cache_activations_multimodal(
+    model,
+    processor,  # Processor to handle both text and image inputs
+    module_list_or_str,
+    cache_input_output,
+    inputs,  # Multimodal inputs including both text and images
+    token_idx=-1,
+    split_attn_by_head=True,
+    **kwargs,
+):
+    if isinstance(token_idx, int):
+        token_idx = [token_idx]
+    if isinstance(module_list_or_str, str):
+        module_strs = [module_list_or_str]
+    else:
+        module_strs = module_list_or_str
+    if split_attn_by_head and cache_input_output == "input":
+        split = [True if "attn" in m else False for m in module_strs]
+    else:
+        split = [False for _ in module_strs]
+
+    all_activations = [None for _ in module_strs]
+    modules = []
+    for m in module_strs:
+        modules.append(eval(m)) 
+
+    if cache_input_output == "input":
+        activations = _forward_cache_inputs(
+            model, processor.tokenizer, inputs, modules, split, token_idx, **kwargs
+        )
+    elif cache_input_output == "output":
+        activations = _forward_cache_outputs(
+            model, processor.tokenizer, inputs, modules, token_idx, **kwargs
+        )
+    else:
+        raise ValueError("cache_input_output must be 'input' or 'output'")
+
+    for j, activation in enumerate(activations):
+        all_activations[j] = activation
+
     return all_activations
 
 
