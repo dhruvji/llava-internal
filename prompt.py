@@ -2,6 +2,7 @@ from transformers import AutoProcessor, LlavaForConditionalGeneration
 from PIL import Image
 import os
 import json
+import pickle
 import torch
 
 import datetime
@@ -42,9 +43,9 @@ prompts = [
 ]
 image = []
 image_red = []
-for img in image_paths[:100]: 
+for img in image_paths[:10]: 
     image.append(Image.open(img).convert("RGB"))
-for img in image_paths_red[:100]:
+for img in image_paths_red[:10]:
     image_red.append(Image.open(img).convert("RGB"))
 input_text = "image, and describe it" #"\nASSISTANT:" is 5 tokens long
 print(processor.tokenizer(input_text))
@@ -59,12 +60,14 @@ activation_cache = cache_activations_multimodal(
         cache_input_output='output',
         inputs=inputs, 
         batch_size=1,
-        token_idx=[-11, -6],
+        token_idx=[-11], #-6
     )
 
-json_file_path = f'/data/dhruv_gautam/llava_internal/caches/reg/activation_cache{timestamp}.json'
-with open(json_file_path, 'w') as file:
-    json.dump(activation_cache, file)
+pickle_file_path = f'/data/dhruv_gautam/llava-internal/caches/reg/activation_cache2_{timestamp}.pkl'
+directory = os.path.dirname(pickle_file_path)
+os.makedirs(directory, exist_ok=True)
+with open(pickle_file_path, 'wb') as file:  
+    pickle.dump(activation_cache, file)
 
 #print(activation_cache.shape)
 
@@ -76,12 +79,53 @@ activation_cache_red = cache_activations_multimodal(
         cache_input_output='output',
         inputs=inputs_red, 
         batch_size=1,
-        token_idx=[-11, -6], 
+        token_idx=[-11], 
     )
 
-json_file_path = f'/data/dhruv_gautam/llava_internal/caches/red/activation_cache{timestamp}.json'
-with open(json_file_path, 'w') as file:
-    json.dump(activation_cache, file)
+pickle_file_path_red = f'/data/dhruv_gautam/llava-internal/caches/red/activation_cache2_{timestamp}.pkl'
+directory = os.path.dirname(pickle_file_path_red)
+os.makedirs(directory, exist_ok=True)
+with open(pickle_file_path_red, 'wb') as file:  
+    pickle.dump(activation_cache_red, file)
+
+inputs_prompt = processor([prompts[1] for i in image_red], images=image, padding=True, return_tensors="pt")
+activation_cache_prompt = cache_activations_multimodal(
+        model=model,
+        processor=processor,
+        module_list_or_str=module_list,  
+        cache_input_output='output',
+        inputs=inputs_prompt, 
+        batch_size=1,
+        token_idx=[-11], 
+    )
+
+# activation_cache and activation_cache_red are lists of troch tensors
+activation_cache_tensor = torch.stack(activation_cache)
+activation_cache_flat = activation_cache_tensor.view(activation_cache_tensor.size(0), -1)
+activation_cache_red_tensor = torch.stack(activation_cache_red)
+activation_cache_red_flat = activation_cache_red_tensor.view(activation_cache_red_tensor.size(0), -1)
+activation_cache_prompt_tensor = torch.stack(activation_cache_prompt)
+activation_cache_prompt_flat = activation_cache_prompt_tensor.view(activation_cache_prompt_tensor.size(0), -1)
+
+red_flat_direction = activation_cache_red_flat - activation_cache_flat  # apply this to a different flat activation_cache and see if cosine goes up with the current red
+
+print(torch.nn.functional.normalize(red_flat_direction, p=2, dim=1))
+
+activation_cache_norm = torch.nn.functional.normalize(activation_cache_flat, p=2, dim=1)
+activation_cache_red_norm = torch.nn.functional.normalize(activation_cache_red_flat, p=2, dim=1)
+activation_cache_prompt_norm = torch.nn.functional.normalize(activation_cache_prompt_flat, p=2, dim=1)
+cosine_sim = torch.mm(activation_cache_norm, activation_cache_red_norm.transpose(0, 1))
+print("\nCosine sim normal and red")
+print(cosine_sim)
+
+cosine_sim_p = torch.mm(activation_cache_norm, activation_cache_prompt_norm.transpose(0, 1))
+print("\nCosine sim normal and red prompt")
+print(cosine_sim_p)
+
+cosine_sim_rp = torch.mm(activation_cache_red_norm, activation_cache_prompt_norm.transpose(0, 1))
+print("\nCosine sim red and red prompt")
+print(cosine_sim_rp)
+
 
 #print(activation_cache.shape)
 print("Generating Output...")

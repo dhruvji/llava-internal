@@ -481,7 +481,7 @@ def cache_activations_multimodal(
     module_list_or_str,
     cache_input_output,
     inputs,  # Multimodal inputs including both text and images
-    token_idx=-1,
+    token_idx,
     split_attn_by_head=True,
     **kwargs,
 ):
