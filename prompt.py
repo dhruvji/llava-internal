@@ -43,6 +43,7 @@ prompts = [
 ]
 image = []
 image_red = []
+"""
 image.append(Image.open(black).convert('RGB'))
 image_red.append(Image.open(red).convert('RGB'))
 """
@@ -50,7 +51,7 @@ for img in image_paths[:5]:
     image.append(Image.open(img).convert("RGB"))
 for img in image_paths_red[:5]:
     image_red.append(Image.open(img).convert("RGB"))
-"""
+
 input_text = "USER: <image>\nPlease look at the image and describe it\nASSISTANT:" #"\nASSISTANT:" is 5 tokens long
 print(processor.tokenizer(input_text))
 input_text = "USER: <image>\n" #"\nASSISTANT:" is 5 tokens long
@@ -58,7 +59,7 @@ print(processor.tokenizer(input_text))
 input_text = "Please look at the image and describe it\nASSISTANT:" #"\nASSISTANT:" is 5 tokens long
 print(processor.tokenizer(input_text))
 print("Processing prompts and image...")
-inputs = processor([prompts[2] for i in image], images=image, padding=True, return_tensors="pt")
+inputs = processor([prompts[0] for i in image], images=image, padding=True, return_tensors="pt")
 print(inputs)
 print("Caching Activations...")
 activation_cache = cache_activations_multimodal(
@@ -68,7 +69,7 @@ activation_cache = cache_activations_multimodal(
         cache_input_output='output',
         inputs=inputs, 
         batch_size=1,
-        token_idx=[-16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6], #-14, -13, -12, -11, -10, -9, 
+        token_idx=[-17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], #-14, -13, -12, -11, -10, -9, 
     )
 
 pickle_file_path = f'/data/dhruv_gautam/llava-internal/caches/reg/activation_cache2_{timestamp}.pkl'
@@ -79,7 +80,7 @@ with open(pickle_file_path, 'wb') as file:
 
 #print(activation_cache.shape)
 
-inputs_red = processor([prompts[2] for i in image_red], images=image_red, padding=True, return_tensors="pt")
+inputs_red = processor([prompts[0] for i in image_red], images=image_red, padding=True, return_tensors="pt")
 activation_cache_red = cache_activations_multimodal(
         model=model,
         processor=processor,
@@ -87,7 +88,7 @@ activation_cache_red = cache_activations_multimodal(
         cache_input_output='output',
         inputs=inputs_red, 
         batch_size=1,
-        token_idx=[-16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6], #-14, -13, -12, -11, -10, -9, 
+        token_idx=[-17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], #-14, -13, -12, -11, -10, -9, 
     )
 """
 pickle_file_path_red = f'/data/dhruv_gautam/llava-internal/caches/red/activation_cache2_{timestamp}.pkl'
@@ -138,35 +139,37 @@ for x in range(len(activation_cache)):
     print("\nCosine sim red and red prompt")
     print(cosine_sim_rp)
 """
-layer_index = 20
 instance_index = 0
-token_positions = [-16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6]
+token_positions = [-17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1]
 token_ids = inputs["input_ids"][0]  
 tokens_all = [processor.tokenizer.decode([tid], skip_special_tokens=True) for tid in token_ids]
 tokens_specific = [tokens_all[idx] for idx in token_positions]
-activation_instance_normal = activation_cache[layer_index][instance_index]  
-activation_instance_red = activation_cache_red[layer_index][instance_index] 
+for layer_index in range(len(model.language_model.model.layers)):
+    print(layer_index)
+    activation_instance_normal = activation_cache[layer_index][instance_index]  
+    activation_instance_red = activation_cache_red[layer_index][instance_index] 
 
-cosine_sim_matrix = np.zeros((activation_instance_normal.size(0), activation_instance_red.size(0)))
+    cosine_sim_matrix = np.zeros((activation_instance_normal.size(0), activation_instance_red.size(0)))
 
-for i in range(activation_instance_normal.size(0)): 
-    for j in range(activation_instance_red.size(0)):  
-        token_i_norm = torch.nn.functional.normalize(activation_instance_normal[i].unsqueeze(0), p=2, dim=1)
-        token_j_norm = torch.nn.functional.normalize(activation_instance_red[j].unsqueeze(0), p=2, dim=1)        
-        cosine_sim = torch.mm(token_i_norm, token_j_norm.transpose(0, 1)).item()
-        cosine_sim_matrix[i, j] = cosine_sim
+    for i in range(activation_instance_normal.size(0)): 
+        for j in range(activation_instance_red.size(0)):  
+            token_i_norm = torch.nn.functional.normalize(activation_instance_normal[i].unsqueeze(0), p=2, dim=1)
+            token_j_norm = torch.nn.functional.normalize(activation_instance_red[j].unsqueeze(0), p=2, dim=1)        
+            cosine_sim = torch.mm(token_i_norm, token_j_norm.transpose(0, 1)).item()
+            cosine_sim_matrix[i, j] = cosine_sim
 
-plt.figure(figsize=(8, 6))
-plt.imshow(cosine_sim_matrix, cmap='viridis', interpolation='nearest')
-plt.xticks(np.arange(len(tokens_specific)), tokens_specific, rotation='vertical')
-plt.yticks(np.arange(len(tokens_specific)), tokens_specific)
-plt.title(f'Cosine Similarity Across Tokens: Layer {layer_index}, Instance {instance_index}')
-plt.colorbar()
-plt.xlabel('Token Positions in Red Cache')
-plt.ylabel('Token Positions in Black Cache')
-plt.xticks(range(activation_instance_normal.size(0)))
-plt.yticks(range(activation_instance_red.size(0)))
-plt.savefig(f"/data/dhruv_gautam/figures/redtokencache{timestamp}.jpg")
+    plt.figure(figsize=(8, 6))
+    plt.imshow(cosine_sim_matrix, cmap='viridis', interpolation='nearest')
+    plt.xticks(np.arange(len(tokens_specific)), tokens_specific, rotation='vertical')
+    plt.yticks(np.arange(len(tokens_specific)), tokens_specific)
+    plt.title(f'Cosine Similarity Across Tokens: Layer {layer_index}, Instance {instance_index}')
+    plt.colorbar()
+    plt.xlabel('Token Positions in Red Cache')
+    plt.ylabel('Token Positions in Black Cache')
+    plt.xticks(range(activation_instance_normal.size(0)))
+    plt.yticks(range(activation_instance_red.size(0)))
+    os.makedirs(f"/data/dhruv_gautam/figures/redtokencache{timestamp}/", exist_ok=True)
+    plt.savefig(f"/data/dhruv_gautam/figures/redtokencache{timestamp}/layer{layer_index}.jpg")
 
 #print(activation_cache.shape)
 print("Generating Output...")
