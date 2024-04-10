@@ -40,6 +40,9 @@ prompts = [
         "USER: <image>\nPlease look at the image and describe it\nASSISTANT:",
         "USER: <image>\nPlease add a red filter to the image, look at the image and describe it\nASSISTANT:",
         "USER: <image>\nPlease look at the image and describe it and it's colors\nASSISTANT:",
+        "USER: <image>\nPlease visualize the image and describe it\nASSISTANT:",
+        "USER: <image>\nPlease visualize the image with a stronger red channel and describe it\nASSISTANT:",
+        "USER: <image>\nPlease imagine the image with a stronger red channel and describe it\nASSISTANT:",
 ]
 image = []
 image_red = []
@@ -47,9 +50,9 @@ image_red = []
 image.append(Image.open(black).convert('RGB'))
 image_red.append(Image.open(red).convert('RGB'))
 """
-for img in image_paths[:5]: 
+for img in image_paths[:1]: 
     image.append(Image.open(img).convert("RGB"))
-for img in image_paths_red[:5]:
+for img in image_paths_red[:1]:
     image_red.append(Image.open(img).convert("RGB"))
 
 input_text = "USER: <image>\nPlease look at the image and describe it\nASSISTANT:" #"\nASSISTANT:" is 5 tokens long
@@ -90,13 +93,13 @@ activation_cache_red = cache_activations_multimodal(
         batch_size=1,
         token_idx=[-17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], #-14, -13, -12, -11, -10, -9, 
     )
-"""
+
 pickle_file_path_red = f'/data/dhruv_gautam/llava-internal/caches/red/activation_cache2_{timestamp}.pkl'
 directory = os.path.dirname(pickle_file_path_red)
 os.makedirs(directory, exist_ok=True)
 with open(pickle_file_path_red, 'wb') as file:  
     pickle.dump(activation_cache_red, file)
-
+"""
 inputs_prompt = processor([prompts[1] for i in image_red], images=image, padding=True, return_tensors="pt")
 activation_cache_prompt = cache_activations_multimodal(
         model=model,
