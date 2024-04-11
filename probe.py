@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import pickle
+import os
 
-pickle_file_path_normal = '/data/dhruv_gautam/llava-internal/caches/reg/activation_cache2_100205.pkl'
-pickle_file_path_red = '/data/dhruv_gautam/llava-internal/caches/red/activation_cache2_100205.pkl'
+pickle_file_path_normal = '/data/dhruv_gautam/llava-internal/caches/reg/activation_cache2_102149.pkl'
+pickle_file_path_red = '/data/dhruv_gautam/llava-internal/caches/red/activation_cache2_102149.pkl'
 
 with open(pickle_file_path_normal, 'rb') as file:
     activation_cache_normal = pickle.load(file)
@@ -34,16 +35,17 @@ for epoch in range(num_epochs):
     optimizer.zero_grad()  
     for instance in activation_cache_normal[layer_index]:
         instance_flat = instance.view(-1).unsqueeze(0)  
-        label = torch.tensor([0.0])  
-        output = probe(instance_flat).squeeze()  
-        loss = criterion(output, label)
+        label = torch.tensor([[0.0]], device=instance_flat.device)  
+        output = probe(instance_flat)  
+        loss = criterion(output, label)  
         loss.backward()  
         total_loss += loss.item()
+
     for instance in activation_cache_red[layer_index]:
-        instance_flat = instance.view(-1).unsqueeze(0)
-        label = torch.tensor([1.0])  
-        output = probe(instance_flat).squeeze()
-        loss = criterion(output, label)
+        instance_flat = instance.view(-1).unsqueeze(0)  
+        label = torch.tensor([[1.0]], device=instance_flat.device) 
+        output = probe(instance_flat)  
+        loss = criterion(output, label)  
         loss.backward()
         total_loss += loss.item()
 
@@ -51,4 +53,29 @@ for epoch in range(num_epochs):
     avg_loss = total_loss / (len(activation_cache_normal[layer_index]) + len(activation_cache_red[layer_index]))
     print(f'Epoch {epoch + 1}, Average Loss: {avg_loss}')
 
+
 print('Finished Training Probe')
+os.makedirs(f"/data/dhruv_gautam/llava-internal/probes/", exist_ok=True)
+model_save_path = '/data/dhruv_gautam/llava-internal/probes/binary_probe.pth'
+torch.save(probe.state_dict(), model_save_path)
+print("Saved trained probe.")
+
+probe_for_testing = BinaryProbe(num_features)  
+probe_for_testing.load_state_dict(torch.load(model_save_path))
+probe_for_testing.eval()  
+
+new_activations = activation_cache_normal[layer_index]
+
+
+true_labels = torch.zeros(len(new_activations))  
+
+predictions = []
+with torch.no_grad():  
+    for instance in new_activations:
+        instance_flat = instance.view(-1).unsqueeze(0)
+        output = probe_for_testing(instance_flat).squeeze()
+        predicted_label = torch.sigmoid(output).round().item()  
+        predictions.append(predicted_label)
+
+accuracy = sum([pred == true for pred, true in zip(predictions, true_labels)]) / len(true_labels)
+print(f'Testing Accuracy: {accuracy}')
