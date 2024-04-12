@@ -3,6 +3,10 @@ import torch.nn as nn
 import torch.optim as optim
 import pickle
 import os
+import random
+
+import datetime
+timestamp = datetime.datetime.now().strftime("%d%H%M")
 
 pickle_file_path_normal = '/data/dhruv_gautam/llava-internal/caches/reg/activation_cache2_102149.pkl'
 pickle_file_path_red = '/data/dhruv_gautam/llava-internal/caches/red/activation_cache2_102149.pkl'
@@ -23,18 +27,18 @@ class BinaryProbe(nn.Module):
     def forward(self, x):
         return self.linear(x)
 
-num_features = activation_cache_normal[layer_index][0].numel()
+num_features = activation_cache_normal[layer_index][0][activation_cache_normal[layer_index][0].size(0) - 3].numel() 
 probe = BinaryProbe(num_features)
 
 criterion = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(probe.parameters(), lr=0.001)
 
-num_epochs = 10
+num_epochs = 50
 for epoch in range(num_epochs):
     total_loss = 0
     optimizer.zero_grad()  
     for instance in activation_cache_normal[layer_index]:
-        instance_flat = instance.view(-1).unsqueeze(0)  
+        instance_flat = instance[activation_cache_normal[layer_index][0].size(0) - 3].view(-1).unsqueeze(0)  
         label = torch.tensor([[0.0]], device=instance_flat.device)  
         output = probe(instance_flat)  
         loss = criterion(output, label)  
@@ -42,7 +46,7 @@ for epoch in range(num_epochs):
         total_loss += loss.item()
 
     for instance in activation_cache_red[layer_index]:
-        instance_flat = instance.view(-1).unsqueeze(0)  
+        instance_flat = instance[activation_cache_normal[layer_index][0].size(0) - 3].view(-1).unsqueeze(0)  
         label = torch.tensor([[1.0]], device=instance_flat.device) 
         output = probe(instance_flat)  
         loss = criterion(output, label)  
@@ -56,26 +60,38 @@ for epoch in range(num_epochs):
 
 print('Finished Training Probe')
 os.makedirs(f"/data/dhruv_gautam/llava-internal/probes/", exist_ok=True)
-model_save_path = '/data/dhruv_gautam/llava-internal/probes/binary_probe.pth'
+model_save_path = f'/data/dhruv_gautam/llava-internal/probes/binary_probe{timestamp}.pth'
 torch.save(probe.state_dict(), model_save_path)
 print("Saved trained probe.")
 
-probe_for_testing = BinaryProbe(num_features)  
+probe_for_testing = BinaryProbe(num_features)
 probe_for_testing.load_state_dict(torch.load(model_save_path))
-probe_for_testing.eval()  
+probe_for_testing.eval()
 
-new_activations = activation_cache_normal[layer_index]
+# Load the test sets
+pickle_file_path_normal_test = '/data/dhruv_gautam/llava-internal/caches/reg/activation_cache2_112213.pkl'
+pickle_file_path_red_test = '/data/dhruv_gautam/llava-internal/caches/red/activation_cache2_112213.pkl'
 
+with open(pickle_file_path_normal_test, 'rb') as file:
+    activation_cache_normal_test = pickle.load(file)
+with open(pickle_file_path_red_test, 'rb') as file:
+    activation_cache_red_test = pickle.load(file)
 
-true_labels = torch.zeros(len(new_activations))  
+test_data = [(instance, 0) for instance in activation_cache_normal_test[layer_index]] + \
+            [(instance, 1) for instance in activation_cache_red_test[layer_index]]
+random.shuffle(test_data)  
 
 predictions = []
-with torch.no_grad():  
-    for instance in new_activations:
-        instance_flat = instance.view(-1).unsqueeze(0)
-        output = probe_for_testing(instance_flat).squeeze()
-        predicted_label = torch.sigmoid(output).round().item()  
-        predictions.append(predicted_label)
+true_labels = []
+for instance, true_label in test_data:
+    instance_flat = instance.view(-1).unsqueeze(0)
+    output = probe_for_testing(instance_flat).squeeze()
+    predicted_label = torch.sigmoid(output).round().item()
+    predictions.append(predicted_label)
+    true_labels.append(true_label)
 
-accuracy = sum([pred == true for pred, true in zip(predictions, true_labels)]) / len(true_labels)
+accuracy = sum(pred == true for pred, true in zip(predictions, true_labels)) / len(true_labels)
 print(f'Testing Accuracy: {accuracy}')
+
+for pred, true in zip(predictions, true_labels):
+    print(f'Predicted: {"Red" if pred == 1 else "Normal"}, Actual: {"Red" if true == 1 else "Normal"}')
