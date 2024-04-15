@@ -18,6 +18,8 @@ def _forward(model, tokenizer, inputs, generate, no_grad, max_new_tokens=20, **k
             model.device
         )
     """
+    device = torch.device("cuda")
+    model.to(device)  
     tokenized = {k: v.to(model.device) for k, v in inputs.items()}
     
     if no_grad:
@@ -481,7 +483,8 @@ def cache_activations_multimodal(
     processor,  # Processor to handle both text and image inputs
     module_list_or_str,
     cache_input_output,
-    inputs,  # Multimodal inputs including both text and images
+    inputs,  # this is implicitly already the batch size so just the total set tbh
+    batch_size,
     token_idx,
     split_attn_by_head=True,
     **kwargs,
@@ -497,11 +500,11 @@ def cache_activations_multimodal(
     else:
         split = [False for _ in module_strs]
 
-    all_activations = [None for _ in module_strs]
+    #all_activations = [None for _ in module_strs]
     modules = []
     for m in module_strs:
         modules.append(eval(m)) 
-
+    
     if cache_input_output == "input":
         activations = _forward_cache_inputs(
             model, processor.tokenizer, inputs, modules, split, token_idx, **kwargs
@@ -512,9 +515,60 @@ def cache_activations_multimodal(
         )
     else:
         raise ValueError("cache_input_output must be 'input' or 'output'")
-
+    """
     for j, activation in enumerate(activations):
         all_activations[j] = activation
+    """
+    return activations
+
+def batched_cache_activations_multimodal(
+    model,
+    processor,  
+    module_list_or_str,
+    cache_input_output,
+    inputs,  # full
+    batch_size,
+    token_idx,
+    split_attn_by_head=True,
+    **kwargs,
+):
+    if isinstance(token_idx, int):
+        token_idx = [token_idx]
+    if isinstance(module_list_or_str, str):
+        module_strs = [module_list_or_str]
+    else:
+        module_strs = module_list_or_str
+    if split_attn_by_head and cache_input_output == "input":
+        split = [True if "attn" in m else False for m in module_strs]
+    else:
+        split = [False for _ in module_strs]
+
+    modules = []
+    for m in module_strs:
+        modules.append(eval(m)) 
+
+    def process_batch(batch):
+        if cache_input_output == "input":
+            return _forward_cache_inputs(
+                model, processor.tokenizer, batch, modules, split, token_idx, **kwargs
+            )
+        elif cache_input_output == "output":
+            return _forward_cache_outputs(
+                model, processor.tokenizer, batch, modules, token_idx, **kwargs
+            )
+        else:
+            raise ValueError("cache_input_output must be 'input' or 'output'")
+
+    num_batches = len(inputs['input_ids']) // batch_size + (0 if len(inputs['input_ids']) % batch_size == 0 else 1)
+    all_activations = []
+
+    for i in range(num_batches):
+        batch_start = i * batch_size
+        batch_end = min((i + 1) * batch_size, len(inputs['input_ids']))
+        batch = {key: value[batch_start:batch_end] for key, value in inputs.items()}
+        activations = process_batch(batch)
+        all_activations.extend(activations)  
+        print(f"Batch {i}")
 
     return all_activations
 
