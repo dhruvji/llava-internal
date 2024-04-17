@@ -1,52 +1,34 @@
 import os
 from PIL import Image
-import torchvision
-import torchvision.transforms as transforms
-from torchvision.datasets import CocoDetection
+import glob
 
-class EnhanceRedTransform(object):
-    def __init__(self, enhanced_red_factor=1.5):
-        self.enhanced_red_factor = enhanced_red_factor
-
+class GreyScaleTransform(object):
     def __call__(self, img):
-        r, g, b = img.split()
-        enhanced_red = r.point(lambda i: i * self.enhanced_red_factor)
-        return Image.merge('RGB', (enhanced_red, g, b))
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        return img.convert('L')  # Convert image to greyscale
 
-# Paths for COCO dataset (adjust as necessary)
-coco_root = './data/coco'
-annFile = f'{coco_root}/annotations/instances_train2017.json'
-
-# Load a subset of the COCO dataset
-coco_dataset = CocoDetection(root=f'{coco_root}/train2017',
-                             annFile=annFile,
-                             transform=transforms.ToPILImage())
-
-subset_size = 100  # Define the size of your subset here
-
-# Directory to save the images
-save_dir = './coco_images_subset'
+source_dir = '/data/dhruv_gautam/coco/val2017'  # Update this path
+save_dir = '/data/dhruv_gautam/coco/val2017'
 os.makedirs(save_dir, exist_ok=True)
 
-# Process only the subset
-for i, (img, _) in enumerate(coco_dataset):
-    if i >= subset_size:  # Stop after processing subset_size images
-        break
-    
-    # Original image save path
-    original_image_dir = os.path.join(save_dir, 'original')
-    os.makedirs(original_image_dir, exist_ok=True)
-    img.save(os.path.join(original_image_dir, f'{i}.jpg'))
-    
-    # Red-enhanced image
-    red_enhanced_image = EnhanceRedTransform()(img)
-    
-    # Red-enhanced image save path
-    red_enhanced_image_dir = os.path.join(save_dir, 'red_enhanced')
-    os.makedirs(red_enhanced_image_dir, exist_ok=True)
-    red_enhanced_image.save(os.path.join(red_enhanced_image_dir, f'{i}.jpg'))
-    
-    if i % 10 == 0:
-        print(f"Processed {i+1} images...")
+all_files = glob.glob(os.path.join(source_dir, '*.jpg'))
 
-print(f"Completed processing {subset_size} COCO images.")
+for i, file_path in enumerate(all_files):
+    image = Image.open(file_path)
+    greyscale_image = GreyScaleTransform()(image)
+
+    label_name = 'image_grey'
+    original_image_dir = os.path.join(save_dir, label_name, 'original')
+    os.makedirs(original_image_dir, exist_ok=True)
+    
+    filename = os.path.basename(file_path)
+    original_image_path = os.path.join(original_image_dir, filename)
+    image.save(original_image_path)
+    
+    greyscale_image_dir = os.path.join(save_dir, label_name, 'greyscale')
+    os.makedirs(greyscale_image_dir, exist_ok=True)
+    greyscale_image_path = os.path.join(greyscale_image_dir, filename)
+    greyscale_image.save(greyscale_image_path)
+
+print(f"Images saved to {save_dir}")
