@@ -560,14 +560,16 @@ def batched_cache_activations_multimodal(
             raise ValueError("cache_input_output must be 'input' or 'output'")
 
     num_batches = len(inputs['input_ids']) // batch_size + (0 if len(inputs['input_ids']) % batch_size == 0 else 1)
-    all_activations = []
-
+    all_activations = [[] for _ in module_strs]
     for i in range(num_batches):
         batch_start = i * batch_size
         batch_end = min((i + 1) * batch_size, len(inputs['input_ids']))
         batch = {key: value[batch_start:batch_end] for key, value in inputs.items()}
         activations = process_batch(batch)
-        all_activations.extend(activations)  
+        for i in range(len(all_activations)):
+            all_activations[i].extend(activations[i])  
+        print(len(all_activations))
+        print(len(all_activations[0]))
         print(f"Batch {i}")
 
     return all_activations

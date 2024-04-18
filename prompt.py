@@ -31,8 +31,8 @@ processor.tokenizer.padding_side = "left"
 
 red = "/data/dhruv_gautam/random/images/red512.jpg"
 black = "/data/dhruv_gautam/random/images/black512.jpg"
-image_dir = "/data/dhruv_gautam/coco/val2017/image/original"
-image_dir_red = "/data/dhruv_gautam/coco/val2017/image/red_enhanced"
+image_dir = "/data/dhruv_gautam/coco/val2017/image_grey/original"
+image_dir_red = "/data/dhruv_gautam/coco/val2017/image_grey/greyscale"
 image_paths = [os.path.join(image_dir, filename) for filename in os.listdir(image_dir) if filename.endswith('.jpg')]
 image_paths_red = [os.path.join(image_dir_red, filename) for filename in os.listdir(image_dir) if filename.endswith('.jpg')]
 
@@ -43,6 +43,7 @@ prompts = [
         "USER: <image>\nPlease visualize the image and describe it\nASSISTANT:",
         "USER: <image>\nPlease visualize the image with a stronger red channel and describe it\nASSISTANT:",
         "USER: <image>\nPlease imagine the image with a stronger red channel and describe it\nASSISTANT:",
+        "USER: <image>\nPlease visualize the image colorized and describe it\nASSISTANT:",
 ]
 image = []
 image_red = []
@@ -50,9 +51,9 @@ image_red = []
 image.append(Image.open(black).convert('RGB'))
 image_red.append(Image.open(red).convert('RGB'))
 """
-for img in image_paths[250:350]: 
+for img in image_paths[:250]: 
     image.append(Image.open(img).convert("RGB"))
-for img in image_paths_red[250:350]:
+for img in image_paths_red[:250]:
     image_red.append(Image.open(img).convert("RGB"))
 
 input_text = "USER: <image>\nPlease look at the image and describe it\nASSISTANT:" #"\nASSISTANT:" is 5 tokens long
@@ -62,8 +63,8 @@ print(processor.tokenizer(input_text))
 input_text = "Please look at the image and describe it\nASSISTANT:" #"\nASSISTANT:" is 5 tokens long
 print(processor.tokenizer(input_text))
 print("Processing prompts and image...")
-inputs = processor([prompts[4] for i in image], images=image, padding=True, return_tensors="pt")
-print(inputs)
+inputs = processor([prompts[6] for i in image], images=image, padding=True, return_tensors="pt")
+print(len(inputs))
 print("Caching Activations...")
 """
 activation_cache = cache_activations_multimodal(
@@ -85,20 +86,24 @@ activation_cache = batched_cache_activations_multimodal(
         inputs=inputs, 
         batch_size=40,
         #token_idx=[-3], #-14, -13, -12, -11, -10, -9, 
-        token_idx=[-17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], 
+        token_idx=[-23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], 
     )
 
-#pickle_file_path = f'/data/dhruv_gautam/llava-internal/caches/reg/visualize_main_cache{timestamp}.pkl'
-pickle_file_path = f'/data/dhruv_gautam/llava-internal/caches/reg/visualize_test_cache{timestamp}.pkl'
+pickle_file_path = f'/data/dhruv_gautam/llava-internal/caches/reg/grey_main_cache{timestamp}.pkl'
+#pickle_file_path = f'/data/dhruv_gautam/llava-internal/caches/reg/describe_test_cache{timestamp}.pkl'
 directory = os.path.dirname(pickle_file_path)
 os.makedirs(directory, exist_ok=True)
 with open(pickle_file_path, 'wb') as file:  
     pickle.dump(activation_cache, file)
     print("saved normal to cache")
+print(len(activation_cache))
+print(len(activation_cache[0]))
+print(len(activation_cache[0][0]))
+print(len(activation_cache[0][0][0]))
 
 #print(activation_cache.shape)
 
-inputs_red = processor([prompts[4] for i in image_red], images=image_red, padding=True, return_tensors="pt")
+inputs_red = processor([prompts[6] for i in image_red], images=image_red, padding=True, return_tensors="pt")
 """
 activation_cache_red = cache_activations_multimodal(
         model=model,
@@ -119,11 +124,11 @@ activation_cache_red = batched_cache_activations_multimodal(
         inputs=inputs_red, 
         batch_size=40,
         #token_idx=[-3],
-        token_idx=[-17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], 
+        token_idx=[-23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], 
     )
 
-#pickle_file_path_red = f'/data/dhruv_gautam/llava-internal/caches/red/visualize_main_cache{timestamp}.pkl'
-pickle_file_path_red = f'/data/dhruv_gautam/llava-internal/caches/red/visualize_test_cache{timestamp}.pkl'
+pickle_file_path_red = f'/data/dhruv_gautam/llava-internal/caches/red/grey_main_cache{timestamp}.pkl'
+#pickle_file_path_red = f'/data/dhruv_gautam/llava-internal/caches/red/describe_test_cache{timestamp}.pkl'
 directory = os.path.dirname(pickle_file_path_red)
 os.makedirs(directory, exist_ok=True)
 with open(pickle_file_path_red, 'wb') as file:  
@@ -141,9 +146,7 @@ activation_cache_prompt = cache_activations_multimodal(
         token_idx=[-14, -13, -12, -11, -10, -9, -8, -7, -6], #
     )
 """
-print(len(activation_cache))
-print(len(activation_cache[0]))
-print(len(activation_cache[0][0]))
+
 """
 # activation_cache are lists of troch tensors by the layers of the model (32)
 for x in range(len(activation_cache)):
@@ -173,7 +176,7 @@ for x in range(len(activation_cache)):
     print(cosine_sim_rp)
 """
 instance_index = 1
-token_positions = [-17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1] # -17
+token_positions = [-23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1] # -17
 token_ids = inputs["input_ids"][0]  
 tokens_all = [processor.tokenizer.decode([tid], skip_special_tokens=True) for tid in token_ids]
 tokens_specific = [tokens_all[idx] for idx in token_positions]
@@ -193,6 +196,7 @@ for layer_index in range(len(model.language_model.model.layers)):
 
     plt.figure(figsize=(8, 6))
     plt.imshow(cosine_sim_matrix, cmap='viridis', interpolation='nearest')
+    
     plt.xticks(np.arange(len(tokens_specific)), tokens_specific, rotation='vertical')
     plt.yticks(np.arange(len(tokens_specific)), tokens_specific)
     plt.title(f'Cosine Similarity Across Tokens: Layer {layer_index}, Instance {instance_index}')
@@ -201,10 +205,10 @@ for layer_index in range(len(model.language_model.model.layers)):
     plt.ylabel('Token Positions in Black Cache')
     plt.xticks(range(activation_instance_normal.size(0)))
     plt.yticks(range(activation_instance_red.size(0)))
-    os.makedirs(f"/data/dhruv_gautam/figures/visualize_test_cache{timestamp}/", exist_ok=True)
-    plt.savefig(f"/data/dhruv_gautam/figures/visualize_test_cache{timestamp}/layer{layer_index}.jpg")
-    #os.makedirs(f"/data/dhruv_gautam/figures/visualize_main_cache{timestamp}/", exist_ok=True)
-    #plt.savefig(f"/data/dhruv_gautam/figures/visualize_main_cache{timestamp}/layer{layer_index}.jpg")
+    #os.makedirs(f"/data/dhruv_gautam/figures/describe_test_cache{timestamp}/", exist_ok=True)
+    #plt.savefig(f"/data/dhruv_gautam/figures/describe_test_cache{timestamp}/layer{layer_index}.jpg")
+    os.makedirs(f"/data/dhruv_gautam/figures/grey_main{timestamp}/", exist_ok=True)
+    plt.savefig(f"/data/dhruv_gautam/figures/grey_main{timestamp}/layer{layer_index}.jpg")
 
 """
 num_layers = len(model.language_model.model.layers)
