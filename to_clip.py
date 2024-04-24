@@ -31,7 +31,7 @@ image_paths = [os.path.join(image_dir, filename) for filename in os.listdir(imag
 image_paths_grey = [os.path.join(image_dir_grey, filename) for filename in os.listdir(image_dir) if filename.endswith('.jpg')]
 
 prompts = [
-        "USER: <image>\nPlease look the image and describe it\nASSISTANT:",
+        "USER: <image>\nPlease look at the image and describe it\nASSISTANT:",
         "USER: <image>\nPlease add a red filter to the image, look at the image and describe it\nASSISTANT:",
         "USER: <image>\nPlease look at the image and describe it and it's colors\nASSISTANT:",
         "USER: <image>\nPlease visualize the image and describe it\nASSISTANT:",
@@ -114,7 +114,7 @@ clip_embeddings_train = clip_embeddings[:90] #batched for 40 this means 200
 clip_embeddings_test = clip_embeddings[90:] # old 90
 print(len(clip_embeddings))
 
-input_features = sum(activation_cache_normal[j][0][k].numel() for j in range(layer_start, layer_end + 1) for k in range(1))
+input_features = sum(activation_cache_normal[i][0][0].numel() for i in range(layer_start, layer_end + 1))
 
 probe = MultiLayerEmbeddingProbe(input_features, embedding_size).to(device)
 criterion = nn.MSELoss()
@@ -130,11 +130,7 @@ for epoch in range(num_epochs):
         for i in range(batch_embeddings.size(0)):  
             if batch_index + i >= len(activation_cache_normal[layer_start]):
                 break
-            primary_normal = torch.cat([
-                activation_cache_normal[j][batch_index + i][k].view(-1)
-                for k in range(1)  
-                for j in range(layer_start, layer_end + 1)  
-            ]).unsqueeze(0).to(device)            
+            primary_normal = torch.cat([activation_cache_normal[j][batch_index + i][0].view(-1) for j in range(layer_start, layer_end + 1)]).unsqueeze(0).to(device)
             output = probe(primary_normal)
             target_embedding = batch_embeddings[i].unsqueeze(0)  
             #target_labels = torch.tensor([1], device=device)  
@@ -173,11 +169,7 @@ for batch_embeddings in clip_embeddings_test:
             print(len(activation_cache_normal[layer_start]))
             print("out of bounds")
             break
-        primary_normal = torch.cat([
-            activation_cache_normal[j][batch_index + i][k].view(-1)
-            for k in range(1)  
-            for j in range(layer_start, layer_end + 1)  
-        ]).unsqueeze(0).to(device)          
+        primary_normal = torch.cat([activation_cache_normal[j][450 + batch_index + i][0].view(-1) for j in range(layer_start, layer_end + 1)]).unsqueeze(0).to(device)
         output = probe(primary_normal)
         target_embedding = batch_embeddings[i].unsqueeze(0)
         sim = F.cosine_similarity(output, target_embedding.unsqueeze(0)).mean().item()
