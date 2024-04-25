@@ -145,7 +145,8 @@ def main():
     #EVAL
     probe = MultiLayerEmbeddingProbe(input_features, embedding_size).to(device)
     probe.load_state_dict(torch.load(model_save_path))
-
+    probe.eval()
+    
     batch_index = 0
     with torch.no_grad():
         for batch_embeddings in clip_embeddings_test:
