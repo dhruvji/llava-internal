@@ -7,6 +7,8 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 
+torch.set_printoptions(threshold=5000)
+
 import datetime
 timestamp = datetime.datetime.now().strftime("%d%H%M")
 
@@ -44,6 +46,7 @@ prompts = [
         "USER: <image>\nPlease visualize the image with a stronger red channel and describe it\nASSISTANT:",
         "USER: <image>\nPlease imagine the image with a stronger red channel and describe it\nASSISTANT:",
         "USER: <image>\nPlease visualize the image colorized and describe it\nASSISTANT:",
+        "USER: <image>\n\nASSISTANT:",
 ]
 image = []
 image_red = []
@@ -63,7 +66,8 @@ print(processor.tokenizer(input_text))
 input_text = "Please look at the image and describe it\nASSISTANT:" #"\nASSISTANT:" is 5 tokens long
 print(processor.tokenizer(input_text))
 print("Processing prompts and image...")
-inputs = processor([prompts[6] for i in image], images=image, padding=True, return_tensors="pt")
+inputs = processor([prompts[7] for i in image], images=image, padding=True, return_tensors="pt")
+print(inputs)
 print(len(inputs))
 print("Caching Activations...")
 """
@@ -84,7 +88,7 @@ activation_cache = batched_cache_activations_multimodal(
         module_list_or_str=module_list,  
         cache_input_output='output',
         inputs=inputs, 
-        batch_size=40,
+        batch_size=1,
         #token_idx=[-3], #-14, -13, -12, -11, -10, -9, 
         token_idx=[-23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], 
     )
@@ -122,7 +126,7 @@ activation_cache_red = batched_cache_activations_multimodal(
         module_list_or_str=module_list,  
         cache_input_output='output',
         inputs=inputs_red, 
-        batch_size=40,
+        batch_size=1,
         #token_idx=[-3],
         token_idx=[-23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1], 
     )
