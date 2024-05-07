@@ -94,7 +94,8 @@ def main():
             cache_input_output='output',
             inputs=inputs, 
             batch_size=40,
-            token_idx=[3, 4, 5, 6],  # 3 4 5 6 is the image itself -3 is the IST
+            token_idx=[-3],
+            #token_idx=[2, 3, 4, 5],  # 3 4 5 6 is the image itself -3 is the IST
         )
     
     clip_embeddings_train, clip_embeddings_test = clip_load()
@@ -104,7 +105,7 @@ def main():
     num_epochs =30
     layer_start = 10
     layer_end = 31
-    input_features = sum(activation_cache_normal[i][0][0].numel() for i in range(layer_start, layer_end + 1)) + sum(activation_cache_normal[i][0][3].numel() for i in range(layer_start, layer_end + 1)) + sum(activation_cache_normal[i][0][1].numel() for i in range(layer_start, layer_end + 1))+ sum(activation_cache_normal[i][0][2].numel() for i in range(layer_start, layer_end + 1))
+    input_features = sum(activation_cache_normal[i][0][0].numel() for i in range(layer_start, layer_end + 1)) #+ sum(activation_cache_normal[i][0][3].numel() for i in range(layer_start, layer_end + 1)) + sum(activation_cache_normal[i][0][1].numel() for i in range(layer_start, layer_end + 1))+ sum(activation_cache_normal[i][0][2].numel() for i in range(layer_start, layer_end + 1))
     probe = MultiLayerEmbeddingProbe(input_features, embedding_size).to(device)
     criterion = nn.MSELoss()
     #criterion = nn.CosineEmbeddingLoss()
@@ -125,7 +126,7 @@ def main():
                 primary_normal = torch.cat([
                     activation_cache_normal[j][batch_index + i][t].view(-1)
                     for j in range(layer_start, layer_end + 1)
-                    for t in range(4)  # This inner loop iterates over all token indices
+                    for t in range(1)  # This inner loop iterates over all token indices
                 ]).unsqueeze(0).to(device)
                 output = probe(primary_normal)
                 target_embedding = batch_embeddings[i].unsqueeze(0)  
@@ -174,7 +175,7 @@ def main():
                 primary_normal = torch.cat([
                     activation_cache_normal[j][batch_index + i][t].view(-1)
                     for j in range(layer_start, layer_end + 1)
-                    for t in range(4)  # This inner loop iterates over all token indices
+                    for t in range(1)  # This inner loop iterates over all token indices
                 ]).unsqueeze(0).to(device)                
                 output = probe(primary_normal)
                 target_embedding = batch_embeddings[i].unsqueeze(0)
