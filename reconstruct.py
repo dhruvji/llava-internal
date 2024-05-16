@@ -26,21 +26,14 @@ class MultiLayerEmbeddingProbe(nn.Module):
         self.norm2 = nn.LayerNorm(hidden_size)  
         self.activation2 = nn.GELU()  
         self.dropout2 = nn.Dropout(0.1)  
-        self.linear3 = nn.Linear(hidden_size, hidden_size)
-        self.norm3 = nn.LayerNorm(hidden_size)  
-        self.activation3 = nn.GELU()  
-        self.dropout3 = nn.Dropout(0.1)  
-        self.linear4 = nn.Linear(hidden_size, output_size)
-
+        self.linear3 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         x = self.activation1(self.norm1(self.linear1(x)))
         x = self.dropout1(x)
         x = self.activation2(self.norm2(self.linear2(x)))
         x = self.dropout2(x)
-        x = self.activation3(self.norm3(self.linear3(x)))
-        x = self.dropout3(x)
-        x = self.linear4(x)
+        x = self.linear3(x)
         return x
 
 prompts = [
@@ -85,17 +78,18 @@ def main():
     image, image_grey = image_load()
 
     print("Processing prompts and image...")
-    inputs = processor([prompts[0] for _ in image], images=image, padding=True, return_tensors="pt")
+    inputs = processor([prompts[2] for _ in image], images=image, padding=True, return_tensors="pt")
 
     clip_embeddings_train, clip_embeddings_test = clip_load()
 
     # PARAM INIT
     embedding_size = 768
     num_epochs = 30
-    layer_start = 10
+    layer_start = 11
     layer_end = 11
 
     # Calculate input_features by iterating through all the second dimensions
+    print("Caching Activations for setup...")
     inputs_batch = {key: val[:10].to(device) for key, val in inputs.items()}
     activation_cache_normal = hidden_cache_activations_multimodal(
         model=model,
@@ -106,19 +100,28 @@ def main():
         batch_size=10,
         token_idx=None,
     )
+    print("Printing dimensions/shapes of the hidden states:")
+    for layer_idx, layer_activations in enumerate(activation_cache_normal["hidden_states"]):
+        for batch_idx, activation in enumerate(layer_activations):
+            print(f"Layer {layer_idx}, Batch {batch_idx}, Shape: {activation.shape}")
 
-    input_features = sum(
-        activation_cache_normal["hidden_states"][i][j].numel()
-        for i in range(layer_start, layer_end + 1)
-        for j in range(len(activation_cache_normal["hidden_states"][0]))
-    )
+    input_features = activation_cache_normal["hidden_states"][11][0].numel()
+        #for i in range(layer_start, layer_end + 1)
+        #for j in range(len(activation_cache_normal["hidden_states"][0]))
+    
+    print(input_features)
 
+    del activation_cache_normal
+    torch.cuda.empty_cache()
+    
+    print("setting up probe")
     probe = MultiLayerEmbeddingProbe(input_features, embedding_size).to(device)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(probe.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
 
     # TRAIN
+    print("Starting training...")
     for epoch in range(num_epochs):
         total_loss = 0
         total_samples = 0
@@ -127,8 +130,9 @@ def main():
         accumulation_steps = 4
 
         while batch_index < len(clip_embeddings_train):
-            batch_embeddings = clip_embeddings_train[batch_index:batch_index + 10]
-            inputs_batch = {key: val[batch_index:batch_index + 10].to(device) for key, val in inputs.items()}
+            # Batch embeddings are stored in batches of 5
+            batch_embeddings = clip_embeddings_train[batch_index:batch_index + 2]  # Load two batches of 5 each
+            inputs_batch = {key: val[batch_index * 5:(batch_index + 2) * 5].to(device) for key, val in inputs.items()}
 
             print("Caching Activations normal...")
             activation_cache_normal = hidden_cache_activations_multimodal(
@@ -141,14 +145,12 @@ def main():
                 token_idx=None,
             )
 
-            for i in range(len(batch_embeddings)):
-                primary_normal = torch.cat([
-                    activation_cache_normal["hidden_states"][j][i].view(-1)
-                    for j in range(layer_start, layer_end + 1)
-                ]).unsqueeze(0).to(device)
-                output = probe(primary_normal)
-                target_embedding = batch_embeddings[i].unsqueeze(0)
+            for i in range(10):
+                primary_normal = activation_cache_normal["hidden_states"][11][i].view(-1).unsqueeze(0).to(device)
+                output = probe(primary_normal)  # Ensure output is correctly assigned
+                target_embedding = batch_embeddings[i // 5][i % 5].unsqueeze(0)  # Correctly index the target embedding
 
+                print(f"Output shape: {output.shape}, Target embedding shape: {target_embedding.shape}")
                 if target_embedding.size(1) != output.size(1):
                     print("Dimension mismatch.")
                     continue
@@ -167,7 +169,7 @@ def main():
             del activation_cache_normal
             torch.cuda.empty_cache()
 
-            batch_index += 10
+            batch_index += 2  # Move to the next set of batches (each of size 5)
 
         avg_loss = total_loss / total_samples
         scheduler.step(avg_loss)
@@ -187,8 +189,8 @@ def main():
     batch_index = 0
     with torch.no_grad():
         while batch_index < len(clip_embeddings_test):
-            batch_embeddings = clip_embeddings_test[batch_index:batch_index + 10]
-            inputs_batch = {key: val[batch_index:batch_index + 10].to(device) for key, val in inputs.items()}
+            batch_embeddings = clip_embeddings_test[batch_index:batch_index + 2]
+            inputs_batch = {key: val[batch_index * 5:(batch_index + 2) * 5].to(device) for key, val in inputs.items()}
 
             print("Caching Activations normal for evaluation...")
             activation_cache_normal = hidden_cache_activations_multimodal(
@@ -201,13 +203,13 @@ def main():
                 token_idx=None,
             )
 
-            for i in range(len(batch_embeddings)):
-                primary_normal = torch.cat([
-                    activation_cache_normal["hidden_states"][j][i].view(-1)
-                    for j in range(layer_start, layer_end + 1)
-                ]).unsqueeze(0).to(device)
-                output = probe(primary_normal)
-                target_embedding = batch_embeddings[i].unsqueeze(0)
+            for i in range(10):
+                primary_normal = activation_cache_normal["hidden_states"][11][i].view(-1).unsqueeze(0).to(device)
+                output = probe(primary_normal)  # Ensure output is correctly assigned
+                target_embedding = batch_embeddings[i // 5][i % 5].unsqueeze(0)  # Correctly index the target embedding
+
+                print(f"Output shape: {output.shape}, Target embedding shape: {target_embedding.shape}")
+
                 sim = F.cosine_similarity(output, target_embedding.unsqueeze(0)).mean().item()
                 print(sim)
 
@@ -215,7 +217,7 @@ def main():
             del activation_cache_normal
             torch.cuda.empty_cache()
 
-            batch_index += 10
+            batch_index += 2  # Move to the next set of batches (each of size 5)
 
 if __name__ == "__main__":
     main()
